@@ -6,10 +6,8 @@
 
 from pathlib import Path
 import time
-import os
 
 import tensorflow as tf
-from tensorflow.compat.v1.keras.backend import set_session
 
 from networks.generator import autoencoder
 from networks.discriminator import convolutional_classifier
@@ -17,27 +15,15 @@ from networks.discriminator import convolutional_classifier
 from utilities.dataset.load_files import get_file_lists
 from utilities.dataset.make_dataset import make_dataset
 
-###################################################################################################################
-# GPU PARAMETERS
-###################################################################################################################
-
-# Select gpu to use (old=1, new=0)
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-
-config = tf.compat.v1.ConfigProto()
-
-if os.environ["CUDA_VISIBLE_DEVICES"]=="1":
-    config.gpu_options.per_process_gpu_memory_fraction = 0.30
-else: 
-    config.gpu_options.per_process_gpu_memory_fraction = 0.30
-set_session(tf.compat.v1.Session(config=config))
+from utilities.configure.configure_tensorflow import configure_tensorflow
+configure_tensorflow(eager=False, gpu_index=0, allow_growth_gpu=False)
 
 
 ###################################################################################################################
 # DEFINE DATA OBJECTS
 ###################################################################################################################
 
-BATCH_SIZE = 128
+BATCH_SIZE = 128*50
 
 data_directory = "/scratch/manderson/numpy/pulses/lib/detector_final/"
 
@@ -47,8 +33,8 @@ list_X_val, list_Y_val = file_lists['val']
 
 # Create the tensorflow datasets
 print("Creating dataset objects... ", end="")
-dataset_train = make_dataset(list_X_train, list_Y_train, batch_size=BATCH_SIZE, prefetch=15)
-dataset_val = make_dataset(list_X_val, list_Y_val, batch_size=BATCH_SIZE, prefetch=15)
+dataset_train = make_dataset(list_X_train, list_Y_train, batch_size=BATCH_SIZE, prefetch=150)
+dataset_val = make_dataset(list_X_val, list_Y_val, batch_size=BATCH_SIZE, prefetch=150)
 print("Done.")
 
 
@@ -200,31 +186,29 @@ def train_step(real_clean, real_noisy):
 # TRAIN THE MODEL
 ###################################################################################################################
 
-epochs = 100
-for epoch in range(epochs):
-    print("\nStart of epoch %d" % (epoch,))
-    start_time = time.time()
+EPOCHS = 10
+@tf.function
+def train_function():
 
-    # Iterate over the batches of the dataset.
-    for step, (x_batch_train, y_batch_train) in enumerate(dataset_train):
-        train_step(x_batch_train, y_batch_train)
+    for epoch in range(EPOCHS):
+        start = time.time()
 
-        # Log every 200 batches.
-        if step % 300 == 0:
-            print("Seen so far: %d samples" % ((step + 1) * BATCH_SIZE))
+        n = 0
+        for clean_pulses, noisy_pulses in dataset_train:
+            train_step(real_clean=clean_pulses, real_noisy=noisy_pulses)
+            if n % 1 == 0:
+                print('LOOP HAS RUN', end='')
+            n += 1
 
-    # Save models every epoch
-    model_save_path = "./saved_models/"
-    generator_n2c.save(model_save_path + f"generator_n2c_{epoch}")
-    generator_c2n.save(model_save_path + f"generator_c2n_{epoch}")
-    discriminator_c.save(model_save_path + f"discriminator_c_{epoch}")
-    discriminator_n.save(model_save_path + f"discriminator_n_{epoch}")
-    
-    print("Time taken: %.2fs" % (time.time() - start_time))
-    
-    
-    
-    
-    
-    
-    
+        # Checkpoint
+        if (epoch + 1) % 1 == 0:
+#             ckpt_save_path = checkpoint_path + f"ckpt_{epoch}/"
+#             ckpt.write(ckpt_save_path)
+
+            model_save_path = f"model_checkpoints/model_{epoch}"
+            generator_n2c.save(model_save_path)
+            print('Saving checkpoint for epoch {} at {}'.format(epoch+1, ckpt_save_path))
+
+        print ('Time taken for epoch {} is {:.2f} sec\n'.format(epoch + 1, time.time()-start))
+        
+train_function()
