@@ -3,7 +3,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.data import Dataset
 
-def make_dataset(list_X, list_y, batch_size=128, prefetch=150):
+def make_dataset(list_X, list_y, batch_size=128, prefetch=1000):
     '''
     Create a tensorflow dataset.
     '''
@@ -16,11 +16,13 @@ def make_dataset(list_X, list_y, batch_size=128, prefetch=150):
     
     ds = ds.shuffle(20000, reshuffle_each_iteration=True)
         
-    ds = ds.batch(batch_size)#.prefetch(prefetch)
+    ds = ds.batch(batch_size).prefetch(prefetch)
 
     return ds
 
 
+@tf.function(input_signature=(tf.TensorSpec(shape=(), dtype=tf.string),
+                              tf.TensorSpec(shape=(), dtype=tf.string))) 
 def data_wrapper_numpy(filename_X, filename_Y):
     
     X, Y = tf.numpy_function(get_data_numpy, 
@@ -31,7 +33,8 @@ def data_wrapper_numpy(filename_X, filename_Y):
     Y.set_shape(tf.TensorShape([None, None]))
     
     return tf.data.Dataset.from_tensor_slices((X, Y))
-    
+
+
 def get_data_numpy(filename_X, filename_Y):
 
     X = np.load(filename_X)

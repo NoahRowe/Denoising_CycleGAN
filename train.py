@@ -7,6 +7,7 @@
 from pathlib import Path
 import time
 import os
+import pickle
 
 import tensorflow as tf
 from tensorflow.compat.v1.keras.backend import set_session
@@ -17,20 +18,33 @@ from networks.discriminator import convolutional_classifier
 from utilities.dataset.load_files import get_file_lists
 from utilities.dataset.make_dataset import make_dataset
 
+
 ###################################################################################################################
 # GPU PARAMETERS
 ###################################################################################################################
 
+# Memory growth mode
+gpu_index = 0
+
+gpus = tf.config.list_physical_devices('GPU')
+
+tf.config.set_visible_devices(gpus[gpu_index], 'GPU')
+
+for gpu in gpus:
+    tf.config.experimental.set_memory_growth(gpu, True)
+
+
+# Set memory mode
 # Select gpu to use (old=1, new=0)
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+# os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
-config = tf.compat.v1.ConfigProto()
+# config = tf.compat.v1.ConfigProto()
 
-if os.environ["CUDA_VISIBLE_DEVICES"]=="1":
-    config.gpu_options.per_process_gpu_memory_fraction = 0.30
-else: 
-    config.gpu_options.per_process_gpu_memory_fraction = 0.30
-set_session(tf.compat.v1.Session(config=config))
+# if os.environ["CUDA_VISIBLE_DEVICES"]=="1":
+#     config.gpu_options.per_process_gpu_memory_fraction = 0.30
+# else: 
+#     config.gpu_options.per_process_gpu_memory_fraction = 0.30
+# set_session(tf.compat.v1.Session(config=config))
 
 
 ###################################################################################################################
@@ -47,8 +61,8 @@ list_X_val, list_Y_val = file_lists['val']
 
 # Create the tensorflow datasets
 print("Creating dataset objects... ", end="")
-dataset_train = make_dataset(list_X_train, list_Y_train, batch_size=BATCH_SIZE, prefetch=15)
-dataset_val = make_dataset(list_X_val, list_Y_val, batch_size=BATCH_SIZE, prefetch=15)
+dataset_train = make_dataset(list_X_train, list_Y_train, batch_size=BATCH_SIZE)
+dataset_val = make_dataset(list_X_val, list_Y_val, batch_size=BATCH_SIZE)
 print("Done.")
 
 
@@ -64,6 +78,9 @@ generator_n2c = autoencoder(input_tuple=input_tuple)
 discriminator_c = convolutional_classifier(input_tuple=input_tuple)
 discriminator_n = convolutional_classifier(input_tuple=input_tuple)
 
+# generator_c2n.summary()
+# generator_n2c.summary()
+
 
 ###################################################################################################################
 # DEFINE LOSS FUNCTIONS
@@ -73,22 +90,25 @@ LAMBDA = 10
 
 binary_crossentropy_loss_fn = tf.keras.losses.BinaryCrossentropy(from_logits=False) # True or false?
 
+@tf.function
 def discriminator_loss(real_pulses, fake_pulses):
     clean_loss = binary_crossentropy_loss_fn(tf.ones_like(real_pulses), real_pulses)
     noisy_loss = binary_crossentropy_loss_fn(tf.zeros_like(fake_pulses), fake_pulses)
     loss = clean_loss + noisy_loss
     return loss * 0.5
 
+@tf.function
 def generator_loss(generated_predictions):
     loss = binary_crossentropy_loss_fn(tf.ones_like(generated_predictions), 
                                        generated_predictions)
     return loss
 
-
+@tf.function
 def cycle_consistency_loss(real_pulses, cycled_pulses):
     loss = tf.reduce_mean(tf.abs(real_pulses - cycled_pulses))
     return loss * LAMBDA
 
+@tf.function
 def identity_loss(real_pulses, same_pulses):
     loss = tf.reduce_mean(tf.abs(real_pulses - same_pulses))
     return loss * LAMBDA * 0.5
@@ -98,34 +118,18 @@ def identity_loss(real_pulses, same_pulses):
 # DEFINE OPTIMIZERS
 ###################################################################################################################
 
-generator_n2c_optimizer = tf.keras.optimizers.Adam(2e-4, beta_1=0.5)
-generator_c2n_optimizer = tf.keras.optimizers.Adam(2e-4, beta_1=0.5)
+generator_n2c_optimizer = tf.keras.optimizers.Adam(5e-4, beta_1=0.8)
+generator_c2n_optimizer = tf.keras.optimizers.Adam(5e-4, beta_1=0.8)
 
-discriminator_n_optimizer = tf.keras.optimizers.Adam(2e-4, beta_1=0.5)
-discriminator_c_optimizer = tf.keras.optimizers.Adam(2e-4, beta_1=0.5)
-
-
-###################################################################################################################
-# DEFINE TRAINING CHECKPOINT
-###################################################################################################################
-
-checkpoint_path = "./model_checkpoints/train/"
-
-ckpt = tf.train.Checkpoint(generator_c2n=generator_c2n,
-                           generator_n2c=generator_n2c,
-                           discriminator_c=discriminator_c,
-                           discriminator_n=discriminator_n,
-                           generator_n2c_optimizer=generator_n2c_optimizer,
-                           generator_c2n_optimizer=generator_c2n_optimizer,
-                           discriminator_c_optimizer=discriminator_c_optimizer,
-                           discriminator_n_optimizer=discriminator_n_optimizer)
+discriminator_n_optimizer = tf.keras.optimizers.Adam(5e-4, beta_1=0.8)
+discriminator_c_optimizer = tf.keras.optimizers.Adam(5e-4, beta_1=0.8)
 
 
 ###################################################################################################################
 # DEFINE TRAINING STEP
 ###################################################################################################################
 
-# @tf.function
+@tf.function
 def train_step(real_clean, real_noisy):
 
     with tf.GradientTape(persistent=True) as tape:
@@ -194,11 +198,38 @@ def train_step(real_clean, real_noisy):
     # Apply to discriminators
     discriminator_c_optimizer.apply_gradients(zip(discriminator_c_gradients, discriminator_c.trainable_variables))
     discriminator_n_optimizer.apply_gradients(zip(discriminator_n_gradients, discriminator_n.trainable_variables))
+    
+    losses = {
+        "gen_n2c_loss": gen_n2c_loss,
+        "gen_c2n_loss": gen_c2n_loss,
+        "total_cycle_loss": total_cycle_loss,
+        "n2c_identity_loss": n2c_identity_loss,
+        "c2n_identity_loss": c2n_identity_loss,
+        "total_gen_n2c_loss": total_gen_n2c_loss,
+        "total_gen_c2n_loss": total_gen_c2n_loss,
+        "disc_c_loss": disc_c_loss,
+        "disc_n_loss": disc_n_loss
+    }
+    
+    return losses
 
 
 ###################################################################################################################
 # TRAIN THE MODEL
 ###################################################################################################################
+
+losses_dict = {
+    
+    "gen_n2c_loss": [],
+    "gen_c2n_loss": [],
+    "total_cycle_loss": [],
+    "n2c_identity_loss": [],
+    "c2n_identity_loss": [],
+    "total_gen_n2c_loss": [],
+    "total_gen_c2n_loss": [],
+    "disc_c_loss": [],
+    "disc_n_loss": [],
+}
 
 epochs = 100
 for epoch in range(epochs):
@@ -207,23 +238,26 @@ for epoch in range(epochs):
 
     # Iterate over the batches of the dataset.
     for step, (x_batch_train, y_batch_train) in enumerate(dataset_train):
-        train_step(x_batch_train, y_batch_train)
+        temp_losses = train_step(x_batch_train, y_batch_train)
 
         # Log every 200 batches.
         if step % 300 == 0:
             print("Seen so far: %d samples" % ((step + 1) * BATCH_SIZE))
+            for key in losses_dict.keys():
+                losses_dict[key].append(temp_losses[key])
 
     # Save models every epoch
     model_save_path = "./saved_models/"
-    generator_n2c.save(model_save_path + f"generator_n2c_{epoch}")
-    generator_c2n.save(model_save_path + f"generator_c2n_{epoch}")
-    discriminator_c.save(model_save_path + f"discriminator_c_{epoch}")
-    discriminator_n.save(model_save_path + f"discriminator_n_{epoch}")
+    generator_n2c.save(model_save_path + f"test_generator_n2c_{epoch}")
+    generator_c2n.save(model_save_path + f"test_generator_c2n_{epoch}")
+    discriminator_c.save(model_save_path + f"test_discriminator_c_{epoch}")
+    discriminator_n.save(model_save_path + f"test_discriminator_n_{epoch}")
+    
+    # Save the updated losses
+    with open(model_save_path+"lossses.pkl", "rb") as f:
+        pickle.dump(losses_dict, f)
     
     print("Time taken: %.2fs" % (time.time() - start_time))
-    
-    
-    
     
     
     
