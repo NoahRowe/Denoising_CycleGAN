@@ -8,6 +8,7 @@ from pathlib import Path
 import time
 import os
 import pickle
+import numpy as np
 
 import tensorflow as tf
 from tensorflow.compat.v1.keras.backend import set_session
@@ -218,43 +219,43 @@ def train_step(real_clean, real_noisy):
 # TRAIN THE MODEL
 ###################################################################################################################
 
-losses_dict = {
-    
-    "gen_n2c_loss": [],
-    "gen_c2n_loss": [],
-    "total_cycle_loss": [],
-    "n2c_identity_loss": [],
-    "c2n_identity_loss": [],
-    "total_gen_n2c_loss": [],
-    "total_gen_c2n_loss": [],
-    "disc_c_loss": [],
-    "disc_n_loss": [],
-}
-
 epochs = 100
 for epoch in range(epochs):
     print("\nStart of epoch %d" % (epoch,))
     start_time = time.time()
+    
+    losses_dict = {
+        "gen_n2c_loss": [],
+        "gen_c2n_loss": [],
+        "total_cycle_loss": [],
+        "n2c_identity_loss": [],
+        "c2n_identity_loss": [],
+        "total_gen_n2c_loss": [],
+        "total_gen_c2n_loss": [],
+        "disc_c_loss": [],
+        "disc_n_loss": [],
+    }
 
     # Iterate over the batches of the dataset.
     for step, (x_batch_train, y_batch_train) in enumerate(dataset_train):
         temp_losses = train_step(x_batch_train, y_batch_train)
-
+        
+        for key in losses_dict.keys():
+            losses_dict[key].append(temp_losses[key].numpy())
+            
         # Log every 200 batches.
         if step % 300 == 0:
             print("Seen so far: %d samples" % ((step + 1) * BATCH_SIZE))
-            for key in losses_dict.keys():
-                losses_dict[key].append(temp_losses[key])
 
     # Save models every epoch
     model_save_path = "./saved_models/"
-    generator_n2c.save(model_save_path + f"test_generator_n2c_{epoch}")
-    generator_c2n.save(model_save_path + f"test_generator_c2n_{epoch}")
-    discriminator_c.save(model_save_path + f"test_discriminator_c_{epoch}")
-    discriminator_n.save(model_save_path + f"test_discriminator_n_{epoch}")
+    generator_n2c.save(model_save_path + f"generator_n2c_{epoch}")
+    generator_c2n.save(model_save_path + f"generator_c2n_{epoch}")
+    discriminator_c.save(model_save_path + f"discriminator_c_{epoch}")
+    discriminator_n.save(model_save_path + f"discriminator_n_{epoch}")
     
     # Save the updated losses
-    with open(model_save_path+"lossses.pkl", "rb") as f:
+    with open(model_save_path+f"losses_{epoch}.pkl", "wb") as f:
         pickle.dump(losses_dict, f)
     
     print("Time taken: %.2fs" % (time.time() - start_time))
