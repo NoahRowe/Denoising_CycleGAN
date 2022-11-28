@@ -6,9 +6,9 @@ def get_file_lists(base_dir):
     and validation.
     '''
     
-    n_files = 45 # max is 45
-    X_filenames = [f"X_lib_pulses_r{i}.npy" for i in range(n_files)] 
-    Y_filenames = [f"y_lib_pulses_r{i}.npy" for i in range(n_files)]
+    n_files = 1000  #max 1000
+    X_filenames = [f"X_noisy_library_pulse_r{i}.npy" for i in range(n_files)] 
+    Y_filenames = [f"y_clean_library_pulse_r{i}.npy" for i in range(n_files)]
     
     X_train = [str(Path(base_dir, "train", f)) for f in X_filenames]
     X_test = [str(Path(base_dir, "test", f)) for f in X_filenames]
