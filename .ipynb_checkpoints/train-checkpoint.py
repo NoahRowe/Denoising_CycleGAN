@@ -54,7 +54,8 @@ for gpu in gpus:
 
 BATCH_SIZE = 128
 
-data_directory = "/scratch/manderson/numpy/pulses/lib/detector_final/"
+data_directory = "/home/tye/data/numpy/fake/data1002/"
+
 
 file_lists = get_file_lists(data_directory)
 list_X_train, list_Y_train = file_lists['train']
@@ -87,16 +88,16 @@ discriminator_n = convolutional_classifier(input_tuple=input_tuple)
 # DEFINE LOSS FUNCTIONS
 ###################################################################################################################
 
-LAMBDA = 10
+LAMBDA = 5
 
-binary_crossentropy_loss_fn = tf.keras.losses.BinaryCrossentropy(from_logits=False) # True or false?
+binary_crossentropy_loss_fn = tf.keras.losses.BinaryCrossentropy(from_logits=True) # True or false?
 
 @tf.function
 def discriminator_loss(real_pulses, fake_pulses):
     clean_loss = binary_crossentropy_loss_fn(tf.ones_like(real_pulses), real_pulses)
     noisy_loss = binary_crossentropy_loss_fn(tf.zeros_like(fake_pulses), fake_pulses)
     loss = clean_loss + noisy_loss
-    return loss * 0.5
+    return loss
 
 @tf.function
 def generator_loss(generated_predictions):
@@ -112,18 +113,18 @@ def cycle_consistency_loss(real_pulses, cycled_pulses):
 @tf.function
 def identity_loss(real_pulses, same_pulses):
     loss = tf.reduce_mean(tf.abs(real_pulses - same_pulses))
-    return loss * LAMBDA * 0.5
+    return loss
 
 
 ###################################################################################################################
 # DEFINE OPTIMIZERS
 ###################################################################################################################
 
-generator_n2c_optimizer = tf.keras.optimizers.Adam(5e-4, beta_1=0.8)
-generator_c2n_optimizer = tf.keras.optimizers.Adam(5e-4, beta_1=0.8)
+generator_n2c_optimizer = tf.keras.optimizers.Adam(1e-3, beta_1=0.9)
+generator_c2n_optimizer = tf.keras.optimizers.Adam(1e-3, beta_1=0.9)
 
-discriminator_n_optimizer = tf.keras.optimizers.Adam(5e-4, beta_1=0.8)
-discriminator_c_optimizer = tf.keras.optimizers.Adam(5e-4, beta_1=0.8)
+discriminator_n_optimizer = tf.keras.optimizers.Adam(1e-3, beta_1=0.9)
+discriminator_c_optimizer = tf.keras.optimizers.Adam(1e-3, beta_1=0.9)
 
 
 ###################################################################################################################
@@ -138,13 +139,14 @@ def train_step(real_clean, real_noisy):
         ##########################################################################################################
         # Generate predictions
         ##########################################################################################################
-        # Generator outputs
+
+        # Forward cycle
         fake_clean = generator_n2c(real_noisy)
+        cycled_noisy = generator_c2n(fake_clean)
+
+        # Backward cycle
         fake_noisy = generator_c2n(real_clean)
-        
-        # Used for cycle loss
-        cycled_clean = generator_c2n(fake_clean)
-        cycled_noisy = generator_n2c(fake_noisy)
+        cycled_clean = generator_n2c(fake_noisy)
         
         # Used for identity loss
         same_clean = generator_n2c(real_clean)
@@ -248,7 +250,7 @@ for epoch in range(epochs):
             print("Seen so far: %d samples" % ((step + 1) * BATCH_SIZE))
 
     # Save models every epoch
-    model_save_path = "./saved_models/"
+    model_save_path = "./saved_models/final/"
     generator_n2c.save(model_save_path + f"generator_n2c_{epoch}")
     generator_c2n.save(model_save_path + f"generator_c2n_{epoch}")
     discriminator_c.save(model_save_path + f"discriminator_c_{epoch}")

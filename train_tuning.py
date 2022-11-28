@@ -221,7 +221,7 @@ def train_step(real_clean, real_noisy):
 # TRAIN THE MODEL
 ###################################################################################################################
 
-epochs = 100
+epochs = 20
 for epoch in range(epochs):
     print("\nStart of epoch %d" % (epoch,))
     start_time = time.time()
@@ -250,7 +250,7 @@ for epoch in range(epochs):
             print("Seen so far: %d samples" % ((step + 1) * BATCH_SIZE))
 
     # Save models every epoch
-    model_save_path = "./saved_models/final/"
+    model_save_path = "./saved_models/exp_19/"
     generator_n2c.save(model_save_path + f"generator_n2c_{epoch}")
     generator_c2n.save(model_save_path + f"generator_c2n_{epoch}")
     discriminator_c.save(model_save_path + f"discriminator_c_{epoch}")
